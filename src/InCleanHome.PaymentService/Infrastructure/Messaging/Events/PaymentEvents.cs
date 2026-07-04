@@ -1,7 +1,10 @@
+using MassTransit;
+
 namespace InCleanHome.PaymentService.Infrastructure.Messaging.Events;
 
-// Published by Payment Service 
+// ─── Published by Payment Service ───────────────────────────────────────
 
+[MessageUrn("urn:incleanhome:event:PaymentProcessedEvent")]
 public record PaymentProcessedEvent
 {
     public int PaymentId { get; init; }
@@ -15,6 +18,7 @@ public record PaymentProcessedEvent
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
+[MessageUrn("urn:incleanhome:event:PaymentFailedEvent")]
 public record PaymentFailedEvent
 {
     public int BookingId { get; init; }
@@ -24,6 +28,7 @@ public record PaymentFailedEvent
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
+[MessageUrn("urn:incleanhome:event:PayoutRequestedEvent")]
 public record PayoutRequestedEvent
 {
     public int PaymentId { get; init; }
@@ -32,7 +37,7 @@ public record PayoutRequestedEvent
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
-// Consumed by Payment Service (duplicated from publisher) 
+// ─── Consumed by Payment Service (duplicated from publisher) ────────────
 
 /// <summary>
 /// Published by Booking Service when a worker marks a booking complete.
@@ -41,6 +46,7 @@ public record PayoutRequestedEvent
 /// initiated by the client (manual channel or MercadoPago). This consumer
 /// only logs/audits the event.
 /// </summary>
+[MessageUrn("urn:incleanhome:event:BookingCompletedEvent")]
 public record BookingCompletedEvent
 {
     public int BookingId { get; init; }

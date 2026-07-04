@@ -1,23 +1,24 @@
-# Build output
-**/bin/
-**/obj/
-**/out/
-**/publish/
+# Build artifacts
+bin/
+obj/
+publish/
+*.pdb
 
 # IDE
 .vs/
-.vscode/
 .idea/
+.vscode/
 *.user
 *.suo
 
-# .NET specific
-*.pdb
-*.dll.config
-*.pdb.config
-
-# User secrets
-secrets.json
+# Secretos (defensa en profundidad — aunque no tenga uno hoy, futuro-proof)
+.env
+.env.local
+firebase-service-account.json
+firebase-credentials.json
+*-service-account.json
+*.pem
+*.key
 
 # Logs
 *.log
@@ -26,8 +27,3 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
-
-# Env files 
-.env
-.env.local
-.env.*.local

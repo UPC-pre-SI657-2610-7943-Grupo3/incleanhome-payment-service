@@ -27,10 +27,16 @@ public class ServicePaymentQueryService(IServicePaymentRepository repository) : 
     {
         var payments = (await repository.FindByWorkerIdAsync(query.WorkerId)).ToList();
 
-        var totalEarnings    = payments.Sum(p => p.WorkerEarning);
-        var platformFeeTotal = payments.Sum(p => p.PlatformFee);
-        var pending          = payments.Where(p => p.PayoutStatus == PayoutStatus.Pending).ToList();
-        var pendingPayout    = pending.Sum(p => p.WorkerEarning);
+        // Pending = payments received but not yet paid out to the worker.
+        var pending = payments.Where(p => p.PayoutStatus == PayoutStatus.Pending).ToList();
+        var pendingPayout = pending.Sum(p => p.WorkerEarning);
+
+        // Stats only count what has ACTUALLY been paid out (post "Solicitar Cobro").
+        // Before the worker requests their payout, the dashboard shows 0 — the
+        // pending block above is what nudges them to request.
+        var paidOut = payments.Where(p => p.PayoutStatus == PayoutStatus.Completed).ToList();
+        var totalEarnings    = paidOut.Sum(p => p.WorkerEarning);
+        var platformFeeTotal = paidOut.Sum(p => p.PlatformFee);
 
         return new WorkerBalanceResult(
             TotalEarnings:      totalEarnings,
@@ -38,6 +44,6 @@ public class ServicePaymentQueryService(IServicePaymentRepository repository) : 
             NetEarnings:        totalEarnings,
             PendingPayout:      pendingPayout,
             PendingPayoutCount: pending.Count,
-            CompletedServices:  payments.Count);
+            CompletedServices:  paidOut.Count);
     }
 }

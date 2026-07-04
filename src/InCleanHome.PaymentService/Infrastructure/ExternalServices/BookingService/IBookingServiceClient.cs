@@ -18,7 +18,11 @@ public record BookingSummary(
     int Id,
     int ClientId,
     int WorkerId,
+    decimal HourlyRate,
+    decimal Hours,
     decimal TotalAmount,
+    decimal PlatformFee,
+    decimal WorkerEarning,
     string Status);
 
 public class BookingServiceClient(
@@ -49,11 +53,15 @@ public class BookingServiceClient(
 
             var json = await resp.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
             return new BookingSummary(
-                Id:          json.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
-                ClientId:    json.TryGetProperty("clientId", out var cId) ? cId.GetInt32() : 0,
-                WorkerId:    json.TryGetProperty("workerId", out var wId) ? wId.GetInt32() : 0,
-                TotalAmount: json.TryGetProperty("totalAmount", out var amt) ? amt.GetDecimal() : 0m,
-                Status:      json.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "");
+                Id:            json.TryGetProperty("id", out var id) ? id.GetInt32() : 0,
+                ClientId:      json.TryGetProperty("clientId", out var cId) ? cId.GetInt32() : 0,
+                WorkerId:      json.TryGetProperty("workerId", out var wId) ? wId.GetInt32() : 0,
+                HourlyRate:    json.TryGetProperty("hourlyRate", out var hr) ? hr.GetDecimal() : 0m,
+                Hours:         json.TryGetProperty("hours", out var hs) ? hs.GetDecimal() : 0m,
+                TotalAmount:   json.TryGetProperty("totalAmount", out var amt) ? amt.GetDecimal() : 0m,
+                PlatformFee:   json.TryGetProperty("platformFee", out var pf) ? pf.GetDecimal() : 0m,
+                WorkerEarning: json.TryGetProperty("workerEarning", out var we) ? we.GetDecimal() : 0m,
+                Status:        json.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "");
         }
         catch (Exception ex)
         {

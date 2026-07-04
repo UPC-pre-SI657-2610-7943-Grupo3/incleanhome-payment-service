@@ -23,7 +23,7 @@ namespace InCleanHome.PaymentService.Infrastructure.ExternalServices.MercadoPago
 ///   POST /api/v1/mercadopago/confirm-by-booking — verify by external_reference
 /// </summary>
 [ApiController]
-[Route("api/v1/mercadopago")]
+[Route("api/v1/payments/mercadopago")]
 [Produces(MediaTypeNames.Application.Json)]
 [SwaggerTag("Mercado Pago Perú — gateway")]
 public class MercadoPagoController(

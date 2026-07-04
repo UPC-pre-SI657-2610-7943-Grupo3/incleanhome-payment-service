@@ -1,9 +1,12 @@
 using InCleanHome.PaymentService.Domain.Model.Aggregates;
+using InCleanHome.PaymentService.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using InCleanHome.PaymentService.Domain.Model.Commands;
 using InCleanHome.PaymentService.Domain.Model.ValueObjects;
 using InCleanHome.PaymentService.Domain.Repositories;
 using InCleanHome.PaymentService.Domain.Services;
 using InCleanHome.PaymentService.Infrastructure.ExternalServices.BookingService;
+using InCleanHome.PaymentService.Infrastructure.ExternalServices.CommunicationService;
 using InCleanHome.PaymentService.Infrastructure.Messaging.Events;
 using MassTransit;
 
@@ -22,10 +25,12 @@ namespace InCleanHome.PaymentService.Application.Internal.CommandServices;
 public class ServicePaymentCommandService(
     IServicePaymentRepository repository,
     IBookingServiceClient bookingClient,
+    ICommunicationServiceClient communicationClient,
     IUnitOfWork unitOfWork,
     IPublishEndpoint publishEndpoint,
     IConfiguration configuration,
     IHttpContextAccessor httpContextAccessor,
+    PaymentDbContext paymentDbContext,
     ILogger<ServicePaymentCommandService> logger) : IServicePaymentCommandService
 {
     public async Task<ServicePayment> Handle(PayBookingCommand c)
@@ -51,11 +56,12 @@ public class ServicePaymentCommandService(
         if (existing is not null)
             throw new InvalidOperationException("This booking has already been paid");
 
-        var commissionRate = GetCommissionRate();
-
+        // Snapshot the commission from the booking — see #6 fix.
+        // ServicePayment NEVER recomputes; the rate is locked at booking creation.
         var payment = new ServicePayment(
             booking.Id, booking.ClientId, booking.WorkerId,
-            booking.TotalAmount, c.Channel, commissionRate);
+            booking.TotalAmount, booking.PlatformFee, booking.WorkerEarning,
+            c.Channel);
 
         await repository.AddAsync(payment);
         await unitOfWork.CompleteAsync();
@@ -69,6 +75,16 @@ public class ServicePaymentCommandService(
             Amount    = payment.Amount,
             Channel   = payment.Channel
         });
+
+        // HTTP fallback: tell the worker their service was paid. The broker
+        // delivery and this HTTP path both go through; receiver dedups by key.
+        await communicationClient.CreateNotificationAsync(
+            userId:         payment.WorkerId,
+            type:           "service_paid",
+            title:          "Servicio pagado",
+            body:           $"El cliente pagó tu servicio (S/. {payment.WorkerEarning:0.00} netos). Revisa el detalle en tus solicitudes completadas.",
+            link:           "/worker/requests",
+            idempotencyKey: $"payment_processed:{payment.Id}");
 
         return payment;
     }
@@ -89,11 +105,11 @@ public class ServicePaymentCommandService(
         if (existing is not null)
             throw new InvalidOperationException("This booking has already been paid");
 
-        var commissionRate = GetCommissionRate();
-
+        // Snapshot the commission from the booking — see #6 fix.
         var payment = new ServicePayment(
             booking.Id, booking.ClientId, booking.WorkerId,
-            booking.TotalAmount, PaymentChannel.MercadoPago, commissionRate,
+            booking.TotalAmount, booking.PlatformFee, booking.WorkerEarning,
+            PaymentChannel.MercadoPago,
             mercadoPagoPaymentId:    c.MercadoPagoPaymentId,
             mercadoPagoPreferenceId: c.MercadoPagoPreferenceId);
 
@@ -109,6 +125,15 @@ public class ServicePaymentCommandService(
             Amount    = payment.Amount,
             Channel   = payment.Channel
         });
+
+        // HTTP fallback.
+        await communicationClient.CreateNotificationAsync(
+            userId:         payment.WorkerId,
+            type:           "service_paid",
+            title:          "Servicio pagado",
+            body:           $"El cliente pagó tu servicio vía Mercado Pago (S/. {payment.WorkerEarning:0.00} netos).",
+            link:           "/worker/requests",
+            idempotencyKey: $"payment_processed:{payment.Id}");
 
         return payment;
     }
@@ -136,9 +161,19 @@ public class ServicePaymentCommandService(
         return pending.Count;
     }
 
-
+    // ──────────────────────────────────────────────────────────────────
     private decimal GetCommissionRate()
     {
+        // Read from DB (PlatformSettings table). Falls back to appsettings.json if the table is empty.
+        try
+        {
+            var settings = paymentDbContext.PlatformSettings.AsNoTracking().FirstOrDefault();
+            if (settings is not null) return settings.CommissionPercent / 100m;
+        }
+        catch
+        {
+            // Table might not exist yet at very first startup; fall through to config fallback.
+        }
         var pct = configuration.GetValue<decimal?>("Payment:PlatformFeePercent") ?? 10m;
         return pct / 100m;
     }

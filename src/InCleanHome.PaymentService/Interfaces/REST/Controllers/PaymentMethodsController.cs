@@ -11,7 +11,7 @@ using Swashbuckle.AspNetCore.Annotations;
 namespace InCleanHome.PaymentService.Interfaces.REST.Controllers;
 
 [ApiController]
-[Route("api/v1/payment-methods")]
+[Route("api/v1/payments/methods")]
 [Produces(MediaTypeNames.Application.Json)]
 [SwaggerTag("Payment methods (off-platform agreements)")]
 public class PaymentMethodsController(

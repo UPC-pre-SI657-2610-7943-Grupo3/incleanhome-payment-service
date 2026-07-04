@@ -33,8 +33,16 @@ public class ServicePayment : IEntityWithCreatedUpdatedDate
 
     public ServicePayment() { }
 
-    public ServicePayment(int bookingId, int clientId, int workerId, decimal amount,
-        string channel, decimal commissionRate,
+    /// <summary>
+    /// Primary constructor — uses the booking's PlatformFee/WorkerEarning as
+    /// the snapshot, so each ServicePayment locks in the commission that was
+    /// in effect at booking creation time. If admin later changes the platform
+    /// commission, historical payments stay untouched (only future bookings
+    /// pick up the new rate).
+    /// </summary>
+    public ServicePayment(int bookingId, int clientId, int workerId,
+        decimal amount, decimal platformFee, decimal workerEarning,
+        string channel,
         string? mercadoPagoPaymentId = null,
         string? mercadoPagoPreferenceId = null)
     {
@@ -42,8 +50,10 @@ public class ServicePayment : IEntityWithCreatedUpdatedDate
             throw new ArgumentException($"Invalid payment channel: {channel}");
         if (amount <= 0)
             throw new ArgumentException("Amount must be positive");
-        if (commissionRate < 0m || commissionRate > 1m)
-            throw new ArgumentException("commissionRate must be between 0 and 1");
+        if (platformFee < 0 || platformFee > amount)
+            throw new ArgumentException("platformFee must be between 0 and amount");
+        if (Math.Abs((platformFee + workerEarning) - amount) > 0.02m)
+            throw new ArgumentException("platformFee + workerEarning must equal amount");
 
         BookingId = bookingId;
         ClientId  = clientId;
@@ -51,14 +61,36 @@ public class ServicePayment : IEntityWithCreatedUpdatedDate
         Amount    = amount;
         Channel   = channel;
 
-        PlatformFee   = Math.Round(amount * commissionRate, 2);
-        WorkerEarning = amount - PlatformFee;
+        // Snapshot from the booking — do NOT recompute.
+        PlatformFee   = platformFee;
+        WorkerEarning = workerEarning;
 
         PayoutStatus = ValueObjects.PayoutStatus.Pending;
         PaidAt = DateTimeOffset.UtcNow;
         MercadoPagoPaymentId    = mercadoPagoPaymentId;
         MercadoPagoPreferenceId = mercadoPagoPreferenceId;
     }
+
+    /// <summary>
+    /// Legacy constructor — kept for any internal callsite that still passes
+    /// a commission rate directly. Prefer the primary constructor that takes
+    /// the snapshot fields from the booking.
+    /// </summary>
+    /// <remarks>Marked obsolete to nudge callers towards the snapshot variant.</remarks>
+    [Obsolete("Pass platformFee and workerEarning snapshot from the booking instead.")]
+    public ServicePayment(int bookingId, int clientId, int workerId, decimal amount,
+        string channel, decimal commissionRate,
+        string? mercadoPagoPaymentId = null,
+        string? mercadoPagoPreferenceId = null)
+        : this(
+            bookingId, clientId, workerId,
+            amount,
+            Math.Round(amount * commissionRate, 2),
+            amount - Math.Round(amount * commissionRate, 2),
+            channel,
+            mercadoPagoPaymentId,
+            mercadoPagoPreferenceId)
+    { }
 
     public void MarkPayoutRequested()
     {

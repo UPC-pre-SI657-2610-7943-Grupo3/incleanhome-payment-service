@@ -9,6 +9,7 @@ public class PaymentDbContext(DbContextOptions<PaymentDbContext> options) : DbCo
 {
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
     public DbSet<ServicePayment> ServicePayments => Set<ServicePayment>();
+    public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder builder)
     {
@@ -43,6 +44,10 @@ public class PaymentDbContext(DbContextOptions<PaymentDbContext> options) : DbCo
         builder.Entity<ServicePayment>().HasIndex(p => p.BookingId).IsUnique();
         builder.Entity<ServicePayment>().HasIndex(p => p.WorkerId);
 
+
+        builder.Entity<PlatformSettings>().HasKey(p => p.Id);
+        builder.Entity<PlatformSettings>().Property(p => p.Id).ValueGeneratedNever();
+        builder.Entity<PlatformSettings>().Property(p => p.CommissionPercent).HasPrecision(5, 2).IsRequired();
         builder.UseSnakeCaseNamingConvention();
     }
 }

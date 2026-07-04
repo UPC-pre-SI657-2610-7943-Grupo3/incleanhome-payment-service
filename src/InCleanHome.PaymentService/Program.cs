@@ -13,6 +13,7 @@ using InCleanHome.PaymentService.Infrastructure.Persistence;
 using InCleanHome.PaymentService.Infrastructure.Persistence.Repositories;
 using InCleanHome.PaymentService.Infrastructure.Pipeline;
 using MassTransit;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
@@ -39,9 +40,7 @@ try
     var rabbitMqUrl = Environment.GetEnvironmentVariable("RABBITMQ_URL") ?? string.Empty;
     var rabbitMqEnabled = !string.IsNullOrWhiteSpace(rabbitMqUrl)
                          && !rabbitMqUrl.Contains("placeholder", StringComparison.OrdinalIgnoreCase);
-
-    var mpAccessToken = Environment.GetEnvironmentVariable("MERCADOPAGO_ACCESS_TOKEN") ?? string.Empty;
-    var mpPublicKey   = Environment.GetEnvironmentVariable("MERCADOPAGO_PUBLIC_KEY") ?? string.Empty;
+    
 
     var loadedFromConsul = await ConsulConfigurationLoader.LoadFromConsulAsync(
         builder.Configuration, consulAddress, serviceName);
@@ -81,14 +80,11 @@ try
     builder.Services.AddScoped<IServicePaymentCommandService, ServicePaymentCommandService>();
     builder.Services.AddScoped<IServicePaymentQueryService, ServicePaymentQueryService>();
 
-    // MercadoPago — settings come from env vars (secret) + Consul (URLs)
-    builder.Services.Configure<MercadoPagoSettings>(opts =>
-    {
-        builder.Configuration.GetSection("MercadoPago").Bind(opts);
-        // Env vars override config (secrets)
-        if (!string.IsNullOrWhiteSpace(mpAccessToken)) opts.AccessToken = mpAccessToken;
-        if (!string.IsNullOrWhiteSpace(mpPublicKey))   opts.PublicKey   = mpPublicKey;
-    });
+    // MercadoPago — settings vienen de Consul KV (FrontendBaseUrl, BaseApiUrl)
+    // + env vars con doble underscore (MercadoPago__AccessToken, MercadoPago__PublicKey).
+    // ASP.NET Core combina ambos automáticamente en builder.Configuration.
+    builder.Services.Configure<MercadoPagoSettings>(
+        builder.Configuration.GetSection("MercadoPago"));
     builder.Services.AddHttpClient<IPaymentGatewayProvider, MercadoPagoAdapter>(c =>
     {
         c.Timeout = TimeSpan.FromSeconds(20);
@@ -97,6 +93,10 @@ try
     // External service HTTP clients
     builder.Services.AddHttpClient<IBookingServiceClient, BookingServiceClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
     builder.Services.AddHttpClient<IIamServiceClient, IamServiceClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+    builder.Services.AddHttpClient<
+        InCleanHome.PaymentService.Infrastructure.ExternalServices.CommunicationService.ICommunicationServiceClient,
+        InCleanHome.PaymentService.Infrastructure.ExternalServices.CommunicationService.CommunicationServiceClient
+    >(c => c.Timeout = TimeSpan.FromSeconds(10));
 
     // MassTransit + RabbitMQ
     builder.Services.AddMassTransit(x =>
@@ -139,13 +139,16 @@ try
 
     app.UseSerilogRequestLogging();
     app.UseCors();
-    app.MapHealthChecks("/health");
+    app.MapHealthChecks("/health", new HealthCheckOptions
+    {
+        Predicate = check => check.Name != "masstransit-bus"
+    });
     app.MapGet("/", () => Results.Ok(new
     {
         service = serviceName, status = "running",
         configSource = loadedFromConsul ? "consul" : "appsettings.json",
         broker = rabbitMqEnabled ? "configured" : "disabled",
-        mercadoPago = !string.IsNullOrWhiteSpace(mpAccessToken) ? "configured" : "disabled"
+        mercadoPago = !string.IsNullOrWhiteSpace(builder.Configuration["MercadoPago:AccessToken"]) ? "configured" : "disabled"
     }));
     app.UseSwagger();
     app.UseSwaggerUI(c => { c.SwaggerEndpoint("/swagger/v1/swagger.json", "Payment Service v1"); c.RoutePrefix = "swagger"; });

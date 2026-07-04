@@ -28,7 +28,7 @@ public class IamServiceClient(
         {
             // /api/auth/me returns the CURRENT user (whoever owns the bearer).
             // For payment-flow purposes, the caller is always the booking client.
-            using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/api/auth/me");
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/api/v1/auth/me");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
             using var resp = await http.SendAsync(req);
             if (!resp.IsSuccessStatusCode) return null;
